@@ -451,7 +451,7 @@
 
       // close any open dropdown when clicking elsewhere
       document.addEventListener('click', () =>
-        document.querySelectorAll('.ms.open').forEach(o=>o.classList.remove('open')));
+        document.querySelectorAll('.ms.open').forEach(o=>{o.classList.remove('open'); const p=o.querySelector('.ms-pop'); if(p) p.style.cssText='';}));
     }
 
     function setRange(from, to) {
@@ -529,6 +529,26 @@
     }
 
     // Button + checkbox-popover multi-select; mutates F[field] (empty = all).
+    // The .controls row is a horizontal scroll container (overflow-x:auto), which
+    // clips absolutely-positioned children. So on desktop we pop the dropdown out
+    // with position:fixed anchored to its button. Mobile keeps its CSS overlay.
+    function placePop(btn, pop) {
+      if (window.matchMedia('(max-width:760px)').matches) {
+        pop.style.cssText = ''; // let the mobile @media overlay rule take over
+        return;
+      }
+      const r = btn.getBoundingClientRect();
+      pop.style.position = 'fixed';
+      pop.style.top = (r.bottom + 5) + 'px';
+      pop.style.left = r.left + 'px';
+      pop.style.right = 'auto';
+      requestAnimationFrame(() => {
+        const pr = pop.getBoundingClientRect();
+        if (pr.right > window.innerWidth - 8)
+          pop.style.left = Math.max(8, window.innerWidth - 8 - pr.width) + 'px';
+      });
+    }
+
     function buildMulti(containerSel, field, counts, labelFn) {
       const lf = labelFn || (x=>x);
       const el = $(containerSel), sel = F[field], total = counts.length;
@@ -545,7 +565,8 @@
       const updCap = () => { cap.textContent = (sel.size===0 || sel.size===total) ? 'all' : (sel.size + ' selected'); };
       reflect(); updCap();
       btn.onclick = e => { e.stopPropagation(); const open = ms.classList.contains('open');
-        document.querySelectorAll('.ms.open').forEach(o=>o.classList.remove('open')); if(!open) ms.classList.add('open'); };
+        document.querySelectorAll('.ms.open').forEach(o=>{o.classList.remove('open'); const p=o.querySelector('.ms-pop'); if(p) p.style.cssText='';});
+        if(!open){ ms.classList.add('open'); placePop(btn, pop); } };
       pop.onclick = e => e.stopPropagation();
       el.querySelectorAll('.ms-tools a').forEach(a => a.onclick = () => {
         if (a.dataset.act==='all') counts.forEach(([k])=>sel.add(k)); else sel.clear();
