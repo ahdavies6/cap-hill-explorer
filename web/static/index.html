@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noai, noimageai">
   <title>Cap Hill Explorer | tonight in Capitol Hill</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -152,6 +153,22 @@
     .view-toggle button.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
     .view-toggle button:hover{background:transparent}
     .view-toggle button.active:hover{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+
+    /* password gate (content is AES-encrypted; this unlocks it in-browser) */
+    .gate{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;padding:20px;
+      background:linear-gradient(160deg,#4338ca,#6e65c6)}
+    .gate[hidden]{display:none}
+    .gate-card{background:var(--panel);border-radius:18px;padding:30px 30px 26px;max-width:360px;width:100%;
+      box-shadow:0 20px 60px rgba(30,25,60,.5);display:flex;flex-direction:column;text-align:center}
+    .gate-emoji{font-size:34px;margin-bottom:6px}
+    .gate-card h2{font-size:20px;font-weight:800;color:var(--indigo);margin-bottom:6px}
+    .gate-card p{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+    .gate-card input[type=password]{font:inherit;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin-bottom:11px}
+    .gate-remember{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3a3556;margin-bottom:12px;justify-content:center}
+    .gate-remember input{accent-color:var(--accent)}
+    .gate-err{color:#c0392b;font-size:12.5px;min-height:17px;margin-bottom:8px}
+    .gate-go{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;font-weight:700;padding:11px;font-size:14px}
+    .gate-go:hover{filter:brightness(1.06);color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2))}
   </style>
 </head>
 <body>
@@ -200,6 +217,18 @@
   <div id="viewToggle" class="view-toggle" role="tablist" aria-label="list or map view">
     <button data-v="list" class="active" type="button">📋 List</button>
     <button data-v="map" type="button">🗺️ Map</button>
+  </div>
+
+  <div id="gate" class="gate" hidden>
+    <form id="gateForm" class="gate-card" autocomplete="off">
+      <div class="gate-emoji">🌃🔒</div>
+      <h2>Cap Hill Explorer</h2>
+      <p>This is a private page. Enter the password to view what's on.</p>
+      <input type="password" id="gatePw" placeholder="password" autocomplete="current-password" autofocus>
+      <label class="gate-remember"><input type="checkbox" id="gateRemember" checked> Remember my device</label>
+      <div id="gateErr" class="gate-err"></div>
+      <button type="submit" class="gate-go">Unlock</button>
+    </form>
   </div>
 
   <div id="tmModal" class="tm-modal" hidden>
@@ -304,8 +333,47 @@
       return out;
     }
 
-    // Dual-mode: live backend (/api/events) in local dev, static snapshot (data.json)
-    // on GitHub Pages. Client-side Ticketmaster events are merged in if enabled.
+    // Decrypt an AES-256-GCM payload (PBKDF2-SHA256 key) produced by encrypt.mjs.
+    async function decryptPayload(enc, pw) {
+      const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+      const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        {name:'PBKDF2', salt:b64(enc.salt), iterations:enc.iter||150000, hash:'SHA-256'},
+        baseKey, {name:'AES-GCM', length:256}, false, ['decrypt']);
+      const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64(enc.iv)}, key, b64(enc.ct));
+      return JSON.parse(new TextDecoder().decode(pt));
+    }
+
+    // Show the password gate and resolve with the decrypted payload. Tries a
+    // remembered password first; on success (with "remember") stores it locally.
+    function unlockEncrypted(enc) {
+      return new Promise(async resolve => {
+        const saved = localStorage.getItem('che_pw');
+        if (saved) {
+          try { return resolve(await decryptPayload(enc, saved)); }
+          catch (e) { localStorage.removeItem('che_pw'); }
+        }
+        const gate = $('#gate'); gate.hidden = false;
+        $('#gatePw').focus();
+        $('#gateForm').onsubmit = async e => {
+          e.preventDefault();
+          const pw = $('#gatePw').value;
+          try {
+            const payload = await decryptPayload(enc, pw);
+            if ($('#gateRemember').checked) localStorage.setItem('che_pw', pw);
+            gate.hidden = true;
+            resolve(payload);
+          } catch (err) {
+            $('#gateErr').textContent = 'Wrong password — try again.';
+            $('#gatePw').select();
+          }
+        };
+      });
+    }
+
+    // Dual-mode: live backend (/api/events) in local dev; static snapshot on
+    // GitHub Pages — either encrypted (data.enc, password-gated) or plaintext
+    // (data.json). Client-side Ticketmaster events are merged in if enabled.
     async function loadEvents() {
       let base = [];
       try {
@@ -313,8 +381,15 @@
         if (!r.ok) throw 0;
         base = (await r.json()).events || [];
       } catch (e) {
-        try { base = (await (await fetch('data.json?t=' + Date.now())).json()).events || []; }
-        catch (_) { base = []; }
+        try {
+          const er = await fetch('data.enc?t=' + Date.now());
+          if (er.ok) {
+            const payload = await unlockEncrypted(await er.json());
+            base = payload.events || [];
+          } else {
+            base = (await (await fetch('data.json?t=' + Date.now())).json()).events || [];
+          }
+        } catch (_) { base = []; }
       }
       const tm = await fetchTicketmaster();
       return [...base, ...tm].filter(e => e.begins_on);

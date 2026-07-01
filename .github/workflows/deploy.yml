@@ -7,7 +7,8 @@ on:
   push:
     branches: [main]          # rebuild on code changes
 
-# Least-privilege: only what Pages deploy needs. No repo secrets required.
+# Least-privilege: only what Pages deploy needs. Optional SITE_PASSWORD secret
+# encrypts the event data; without it the site builds unencrypted.
 permissions:
   contents: read
   pages: write
@@ -34,6 +35,11 @@ jobs:
 
       - name: Scrape sources + build static site
         run: uv run python snapshot.py --days 8
+
+      - name: Encrypt snapshot (skipped if no SITE_PASSWORD secret)
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: node encrypt.mjs
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

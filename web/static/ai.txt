@@ -1,0 +1,15 @@
+# ai.txt — AI usage policy for Cap Hill Explorer
+# Advisory signal (like robots.txt, but aimed at AI/LLM data collection).
+# Not legally binding on its own, but states intent explicitly.
+
+# No permission is granted to crawl, scrape, index, cache, or use any content
+# from this site for AI/ML training, fine-tuning, retrieval-augmented
+# generation, embeddings, or any dataset construction.
+
+User-Agent: *
+Disallow: /
+
+# Explicit no-train / no-AI signal
+Content-Usage: ai=n
+Content-Usage: train-ai=n
+Content-Usage: search-ai=n
