@@ -1,0 +1,52 @@
+name: Build & deploy to Pages
+
+on:
+  schedule:
+    - cron: "0 * * * *"      # hourly (UTC); best-effort per GitHub scheduling
+  workflow_dispatch: {}       # manual "Run workflow" button
+  push:
+    branches: [main]          # rebuild on code changes
+
+# Least-privilege: only what Pages deploy needs. No repo secrets required.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once; let a newer run cancel a queued older one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: uv sync --frozen
+
+      - name: Scrape sources + build static site
+        run: uv run python snapshot.py --days 8
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

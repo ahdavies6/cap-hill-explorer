@@ -1,0 +1,16 @@
+{
+  "name": "Cap Hill Explorer",
+  "short_name": "Cap Hill",
+  "description": "What's happening tonight in Capitol Hill, Seattle.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f5fb",
+  "theme_color": "#6e65c6",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

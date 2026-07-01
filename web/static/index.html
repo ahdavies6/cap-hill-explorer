@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cap Hill Explorer | tonight in Capitol Hill</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#6e65c6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Cap Hill">
+  <link rel="preconnect" href="https://fonts.googleapis.com/">
+  <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    /* palette shared with experiment_fetch_data / doc2site house style */
+    :root{
+      --bg:#FAF9F7; --panel:#ffffff; --panel2:#f4f3fb; --line:#e7e3f5;
+      --txt:#1a1a1a; --ink2:#333; --muted:#8a8594;
+      --accent:#667eea; --accent2:#764ba2; --accentd:#4338ca; --indigo:#6e65c6;
+      --good:#10b981; --warn:#f59e0b; --hot:#f43f5e;
+      --shadow:0 1px 4px rgba(60,50,90,.05),0 1px 2px rgba(60,50,90,.04);
+    }
+    *{box-sizing:border-box; margin:0; padding:0;}
+    body{
+      font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      color:var(--txt); background:var(--bg); font-size:14px; line-height:1.55;
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+      height:100vh; display:flex; flex-direction:column; overflow:hidden;
+    }
+    a{color:var(--accent);text-decoration:none} a:hover{color:var(--accentd)}
+
+    /* ---- header + search form (experiment_fetch_data style) ---- */
+    header{padding:16px 24px 14px; border-bottom:1px solid var(--line); background:var(--panel);}
+    .titlerow{display:flex; align-items:baseline; justify-content:center; gap:12px; margin-bottom:14px;}
+    h1.title{font-size:23pt;font-weight:800;color:var(--indigo);line-height:1.08;}
+    .titlerow .sub{font-style:italic;color:var(--muted);font-size:12.5px;}
+
+    /* single-line control bar (experiment_fetch_data style) */
+    .controls{display:flex;gap:10px 14px;flex-wrap:nowrap;align-items:center;overflow-x:auto;padding-bottom:5px}
+    .controls>*,.controls .grp{flex-shrink:0}
+    .controls .clabel{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+    .controls .grp{display:inline-flex;align-items:center;gap:7px;flex-wrap:nowrap}
+    .controls .csep{color:#d0cbe2;font-weight:400;user-select:none}
+
+    /* multiselect dropdown */
+    .ms{position:relative;display:inline-block}
+    .ms-btn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;background:#fff;border:1px solid #d8d4ef;border-radius:8px;padding:7px 12px;font-size:12.5px;color:var(--ink2);font-weight:500}
+    .ms-btn:hover{border-color:var(--accent)}
+    .ms-btn .ms-cap{font-weight:600}
+    .ms-btn .chev{font-size:8px;color:var(--accent);transition:transform .18s ease}
+    .ms.open .ms-btn{border-color:var(--accent);box-shadow:0 0 0 3px rgba(102,126,234,.12)}
+    .ms.open .ms-btn .chev{transform:rotate(90deg)}
+    .ms-pop{display:none;position:absolute;z-index:1200;top:calc(100% + 5px);left:0;min-width:240px;max-height:340px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 28px rgba(60,50,90,.16);padding:8px}
+    .ms.open .ms-pop{display:block}
+    .ms-tools{display:flex;gap:14px;padding:2px 6px 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
+    .ms-tools a{font-size:11px;cursor:pointer;color:var(--accentd);font-weight:600}
+    .ms-tools a:hover{text-decoration:underline}
+    .ms-opt{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:12.5px;color:var(--ink2)}
+    .ms-opt:hover{background:#f4f3fb}
+    .ms-opt.ms-zero{opacity:.4}
+    .ms-opt input{accent-color:var(--accent);cursor:pointer;margin:0}
+    .ms-opt .ms-n{margin-left:auto;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+    .daterange{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap}
+    .dlabel{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    input[type=date],input[type=search],button{background:#fff;color:var(--txt);border:1px solid #d8d4ef;border-radius:8px;padding:7px 10px;font:inherit}
+    input[type=date]{font-size:12.5px;font-weight:600;color:var(--accentd);font-variant-numeric:tabular-nums}
+    input[type=search]{flex:1;min-width:160px}
+    input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(102,126,234,.12)}
+    .drsep{color:var(--muted);font-weight:600}
+    button{cursor:pointer;font-weight:600;color:var(--ink2)}
+    button:hover{border-color:var(--accent);color:var(--accentd);background:var(--panel2)}
+    .count-pill{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:500;color:var(--accentd);background:var(--panel2);border:1px solid #d8d4ef;border-radius:99px;padding:5px 13px}
+    .refresh-btn{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;font-weight:700}
+    .refresh-btn:hover{filter:brightness(1.06);color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2))}
+    .refresh-btn.busy{opacity:.6;pointer-events:none}
+    /* Ticketmaster BYO-key button + modal */
+    .tm-btn{color:var(--muted);background:var(--panel)}
+    .tm-btn.on{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;font-weight:700}
+    .tm-modal{position:fixed;inset:0;background:rgba(40,35,70,.45);display:flex;align-items:center;justify-content:center;z-index:2000;padding:18px}
+    .tm-modal[hidden]{display:none}
+    .tm-card{background:var(--panel);border-radius:16px;max-width:440px;width:100%;padding:22px 24px;box-shadow:0 18px 50px rgba(40,35,70,.4);font-size:13.5px;color:#3a3556}
+    .tm-card h3{font-size:16px;font-weight:800;color:var(--indigo);margin-bottom:10px}
+    .tm-card .tm-opt{font-weight:500;color:var(--muted);font-size:12px}
+    .tm-card p{line-height:1.5;margin-bottom:10px}
+    .tm-steps{margin:0 0 14px 18px;line-height:1.6}
+    .tm-steps a{color:var(--accentd);font-weight:600}
+    .tm-row{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;font-weight:600;font-size:12px;color:var(--muted)}
+    .tm-row input[type=password]{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg)}
+    .tm-check{flex-direction:row;align-items:center;gap:8px;font-size:13px;color:#3a3556}
+    .tm-actions{display:flex;align-items:center;gap:8px;margin-top:6px}
+    .tm-spacer{flex:1}
+    .tm-ghost{background:var(--panel);color:var(--muted)}
+    .tm-save{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;font-weight:700}
+
+    .emoji{font-style:normal}
+
+    #wrap{flex:1;display:flex;min-height:0}
+    #sidebar{width:400px;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+    #countbar{padding:11px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-shrink:0}
+    #list{flex:1;overflow-y:auto;padding:14px 16px;background:var(--bg)}
+    #map{flex:1}
+
+    .card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:12px 15px;margin-bottom:11px;cursor:pointer;box-shadow:var(--shadow);transition:box-shadow .15s ease,transform .1s ease}
+    .card:hover{box-shadow:0 4px 14px rgba(110,101,198,.14);transform:translateY(-1px)}
+    .card h3{font-size:14px;font-weight:700;color:#2b2740;margin-bottom:5px;line-height:1.3}
+    .card .when{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:var(--accentd);background:linear-gradient(180deg,transparent 60%,rgba(102,126,234,.18) 60%);padding:0 3px}
+    .card .meta{font-size:12px;color:var(--muted);margin-top:5px}
+    .card .src{display:inline-block;font-size:9pt;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#5a51b0;background:var(--panel2);border:1px solid #e0dcf3;border-radius:99px;padding:1px 8px}
+    .card .cat{display:inline-block;font-size:9pt;font-weight:600;color:#7a6021;background:#fffaf0;border:1px solid #f0e4c8;border-radius:99px;padding:1px 8px;margin-left:2px}
+    .card a.detail{color:var(--accentd);font-weight:600}
+    /* selected card: purple theme, white text */
+    .card.sel{background:var(--indigo);border-color:var(--indigo);border-left:4px solid #35286f;box-shadow:0 4px 16px rgba(110,101,198,.4)}
+    .card.sel h3,.card.sel .meta,.card.sel .meta *{color:#fff !important}
+    .card.sel .when{color:#fff;background:rgba(255,255,255,.22)}
+    .card.sel .src{color:#fff;background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.5)}
+    .card.sel .cat{color:#fff;background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.5)}
+    .card.sel a.detail{color:#fff;text-decoration:underline}
+    /* pin highlight: selected keeps full color, others fade */
+    #map.selecting .che-pin{opacity:.35;transition:opacity .15s ease}
+    #map.selecting .che-pin.sel{opacity:1}
+    .che-pin.sel{z-index:1000 !important;filter:drop-shadow(0 0 4px rgba(110,101,198,.9))}
+    .empty{color:var(--muted);font-style:italic;padding:20px 6px;font-size:13px}
+
+    .leaflet-popup-content{font-family:'Inter',sans-serif}
+    .leaflet-popup-content b{color:var(--indigo)}
+    .leaflet-popup-content a{color:#5a51b0;font-weight:600}
+    footer{font-size:9pt;color:#aaa;text-align:center;padding:6px;font-style:italic;background:var(--panel);border-top:1px solid var(--line)}
+
+    /* ---- Mobile / narrow-viewport (tablet portrait, small window, phone) ---- */
+    .view-toggle{display:none}
+    @media (max-width:760px){
+      /* dropdowns pop as a top overlay instead of hiding in the scrolling bar */
+      .ms.open::before{content:'';position:fixed;inset:0;background:rgba(40,35,70,.35);z-index:2900}
+      .ms.open .ms-pop{position:fixed;top:11vh;left:12px;right:12px;min-width:0;width:auto;max-height:74vh;z-index:3000}
+      /* stack list + map; show only one at a time via the floating toggle */
+      #wrap{flex-direction:column}
+      #sidebar{width:100%;flex:1 1 auto;min-height:0;border-right:none}
+      #map{width:100%;flex:1 1 auto;min-height:0}
+      body:not(.m-map) #map{display:none}
+      body.m-map #sidebar{display:none}
+      .view-toggle{display:inline-flex}
+    }
+    .view-toggle{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:1500;
+      background:var(--panel);border:1px solid var(--line);border-radius:99px;
+      box-shadow:0 6px 22px rgba(60,50,90,.28);padding:4px;gap:3px}
+    .view-toggle button{border:none;border-radius:99px;padding:8px 20px;font-weight:700;font-size:13px;background:transparent;color:var(--muted)}
+    .view-toggle button.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+    .view-toggle button:hover{background:transparent}
+    .view-toggle button.active:hover{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="titlerow">
+      <h1 class="title"><span class="emoji">🌃</span> Cap Hill Explorer</h1>
+    </div>
+
+    <div class="controls">
+      <span class="grp">
+        <span class="clabel">sources</span>
+        <span id="msSource"></span>
+      </span>
+      <span class="csep">|</span>
+      <span class="grp">
+        <span class="clabel">category</span>
+        <span id="msCategory"></span>
+      </span>
+      <span class="csep">|</span>
+      <span class="grp">
+        <span class="daterange">
+          <span class="dlabel">from</span><input type="date" id="fFrom">
+          <span class="drsep">→</span>
+          <span class="dlabel">to</span><input type="date" id="fTo">
+        </span>
+      <button id="today" type="button" title="just today">today</button>
+      <button id="week" type="button" title="today + next 6 days">this week</button>
+      </span>
+      <span class="csep">|</span>
+      <input type="search" id="fSearch" placeholder="search title / venue / category…">
+      <button id="clear" type="button">clear all</button>
+    <button id="refresh" class="refresh-btn" type="button" title="re-pull sources for the selected dates">↻ refresh</button>
+    <button id="tmBtn" class="tm-btn" type="button" title="add optional Ticketmaster events (bring your own key)">🎟️ Ticketmaster</button>
+    </div>
+  </header>
+
+  <div id="wrap">
+    <div id="sidebar">
+      <div id="countbar"><span id="count" class="count-pill"></span></div>
+      <div id="list"></div>
+    </div>
+    <div id="map"></div>
+  </div>
+  <footer>Cap Hill Explorer — live data · built with Copilot + Claude Opus 4.8</footer>
+
+  <div id="viewToggle" class="view-toggle" role="tablist" aria-label="list or map view">
+    <button data-v="list" class="active" type="button">📋 List</button>
+    <button data-v="map" type="button">🗺️ Map</button>
+  </div>
+
+  <div id="tmModal" class="tm-modal" hidden>
+    <div class="tm-card">
+      <h3>🎟️ Ticketmaster events <span class="tm-opt">(optional)</span></h3>
+      <p>Pull in concerts, comedy &amp; shows near Capitol Hill from Ticketmaster. Bring your own free API key — it's stored <strong>only in this browser</strong> and is never uploaded, shared, or committed to the repo.</p>
+      <ol class="tm-steps">
+        <li>Sign up (free) at <a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener">developer.ticketmaster.com</a>.</li>
+        <li>Create an app and copy its <strong>Consumer Key</strong>.</li>
+        <li>Paste it below, tick “enable”, and save.</li>
+      </ol>
+      <label class="tm-row"><span>API key</span>
+        <input type="password" id="tmKey" placeholder="your Ticketmaster consumer key" autocomplete="off" spellcheck="false"></label>
+      <label class="tm-row tm-check"><input type="checkbox" id="tmOn"> Enable Ticketmaster events</label>
+      <div class="tm-actions">
+        <button id="tmForget" type="button" class="tm-ghost">forget key</button>
+        <span class="tm-spacer"></span>
+        <button id="tmCancel" type="button" class="tm-ghost">cancel</button>
+        <button id="tmSave" type="button" class="tm-save">save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const $ = s => document.querySelector(s);
+    const TZ = 'America/Los_Angeles';
+    const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const fmtTime = iso => new Date(iso).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZone:TZ});
+    const fmtDay  = iso => new Date(iso).toLocaleDateString([], {weekday:'short', month:'short', day:'numeric', timeZone:TZ});
+    const dayKey  = iso => new Date(iso).toLocaleDateString('en-CA', {timeZone:TZ}); // YYYY-MM-DD in Seattle
+    const addDays = (ymd, n) => { const d = new Date(ymd+'T12:00:00'); d.setDate(d.getDate()+n); return d.toLocaleDateString('en-CA'); };
+
+    const map = L.map('map').setView([47.6145, -122.3190], 15);
+    // CARTO Voyager: modern, retina/HiDPI raster tiles (Google-Maps-ish), no API key.
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd', maxZoom: 20, detectRetina: true,
+    }).addTo(map);
+    const icon = L.divIcon({className:'che-pin',
+      html:'<div style="width:16px;height:16px;border-radius:50% 50% 50% 0;background:#6e65c6;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transform:rotate(-45deg)"></div>',
+      iconSize:[16,16], iconAnchor:[8,8], popupAnchor:[0,-8]});
+
+    let ALL = [];
+    let markers = [];
+    let cards = [];
+    let selIdx = -1;
+    let selecting = false; // true while we programmatically swap popups (ignore that popupclose)
+    function clearSel() {
+      if (selIdx >= 0) cards[selIdx] && cards[selIdx].classList.remove('sel');
+      // clear .sel from ALL pin elements (a panned-out marker's node may be detached,
+      // so tracking a single index can leave stray highlighted pins behind).
+      document.querySelectorAll('.che-pin.sel').forEach(el => el.classList.remove('sel'));
+      selIdx = -1;
+      map.getContainer().classList.remove('selecting');
+    }
+    // user closing the popup (X / clicking the map) de-highlights everything
+    map.on('popupclose', () => { if (!selecting) clearSel(); });
+    const F = { src:new Set(), cat:new Set(), from:'', to:'', q:'' };
+    let DATA_MIN='', DATA_MAX='';
+    const TODAY = dayKey(new Date().toISOString());  // Seattle-local YYYY-MM-DD
+
+    const srcLabel = s => ({meetup:'Meetup', ticketmaster:'Ticketmaster', do206:'Do206', everout:'EverOut', 'chs-blog':'CHS Blog'}[s] || s);
+    const CAT_EMOJI = {'Games & Trivia':'🎲','Books & Talks':'📚','Art & Exhibits':'🎨','Comedy':'😂','Film':'🎬','Theatre & Dance':'🎭','Food & Drink':'🍔','Music':'🎵','Community & Social':'🌈','Other':'✨'};
+    const catLabel = c => `${CAT_EMOJI[c]||''} ${c}`.trim();
+
+    // ---- Ticketmaster: bring-your-own-key, off by default. Key lives ONLY in
+    // this browser's localStorage — never uploaded, never in the repo/CI. ----
+    const BBOX = {minLat:47.60, maxLat:47.64, minLng:-122.33, maxLng:-122.30};
+    const CENTER = [47.6145, -122.3190];
+    const TM = {
+      get key(){ return localStorage.getItem('che_tm_key') || ''; },
+      get on(){ return localStorage.getItem('che_tm_on') === '1' && !!this.key; },
+    };
+    const tmCategory = seg => ({Music:'Music', Comedy:'Comedy', 'Arts & Theatre':'Theatre & Dance', Film:'Film', Sports:'Community & Social'}[seg] || 'Music');
+
+    async function fetchTicketmaster() {
+      if (!TM.on) return [];
+      const start = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+      const end = new Date(addDays(TODAY, 30) + 'T23:59:59Z').toISOString().replace(/\.\d+Z$/, 'Z');
+      const p = new URLSearchParams({ apikey: TM.key, latlong: CENTER.join(','), radius: '3',
+        unit: 'miles', startDateTime: start, endDateTime: end, size: '100', sort: 'date,asc' });
+      let data;
+      try {
+        const r = await fetch('https://app.ticketmaster.com/discovery/v2/events.json?' + p);
+        if (!r.ok) return [];
+        data = await r.json();
+      } catch (e) { return []; }
+      const evs = (data._embedded && data._embedded.events) || [];
+      const out = [];
+      for (const e of evs) {
+        const st = e.dates && e.dates.start && e.dates.start.dateTime;
+        if (!st) continue;
+        let lat = null, lng = null, venue = '';
+        const v = e._embedded && e._embedded.venues && e._embedded.venues[0];
+        if (v) { venue = v.name || ''; const loc = v.location || {}; if (loc.latitude) { lat = +loc.latitude; lng = +loc.longitude; } }
+        if (lat == null || lat < BBOX.minLat || lat > BBOX.maxLat || lng < BBOX.minLng || lng > BBOX.maxLng) continue;
+        const seg = (e.classifications && e.classifications[0] && e.classifications[0].segment && e.classifications[0].segment.name) || '';
+        out.push({ uid: 'tm-' + e.id, source_id: 'ticketmaster', title: e.name || 'Untitled',
+          begins_on: st, url: e.url, lat, lng, locality: venue, category: seg, category_group: tmCategory(seg) });
+      }
+      return out;
+    }
+
+    // Dual-mode: live backend (/api/events) in local dev, static snapshot (data.json)
+    // on GitHub Pages. Client-side Ticketmaster events are merged in if enabled.
+    async function loadEvents() {
+      let base = [];
+      try {
+        const r = await fetch('/api/events?upcoming=1');
+        if (!r.ok) throw 0;
+        base = (await r.json()).events || [];
+      } catch (e) {
+        try { base = (await (await fetch('data.json?t=' + Date.now())).json()).events || []; }
+        catch (_) { base = []; }
+      }
+      const tm = await fetchTicketmaster();
+      return [...base, ...tm].filter(e => e.begins_on);
+    }
+
+    async function init() {
+      ALL = await loadEvents();
+      buildFilters();
+      wireTm();
+      wireViewToggle();
+      apply();
+    }
+
+    // Mobile list/map toggle. The map can't share the row on narrow screens, so
+    // we stack them and flip between panes; Leaflet needs invalidateSize() when
+    // its container goes from display:none to visible or tiles render misaligned.
+    function wireViewToggle() {
+      const tg = $('#viewToggle');
+      tg.querySelectorAll('button').forEach(b => b.onclick = () => {
+        const showMap = b.dataset.v === 'map';
+        document.body.classList.toggle('m-map', showMap);
+        tg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+        if (showMap) setTimeout(() => { map.invalidateSize(); if (selIdx >= 0 && markers[selIdx]) map.setView(markers[selIdx].getLatLng()); }, 60);
+      });
+    }
+
+    function buildFilters() {
+      const days = ALL.map(e => dayKey(e.begins_on));
+      DATA_MIN = days.length ? days.reduce((a,b)=>a<b?a:b) : TODAY;
+      DATA_MAX = days.length ? days.reduce((a,b)=>a>b?a:b) : TODAY;
+      // Date pickers allow today .. 30 days out (so refresh can target future ranges).
+      $('#fFrom').min = $('#fTo').min = TODAY;
+      $('#fFrom').max = $('#fTo').max = addDays(TODAY, 30);
+      // Default "when" = today (the day the app is run).
+      F.from = TODAY; F.to = TODAY;
+      $('#fFrom').value = F.from; $('#fTo').value = F.to;
+
+      // source chips (all on by default)
+      // source multiselect dropdown (empty selection = all), sorted desc by total.
+      F.src = new Set();
+      buildMulti('#msSource', 'src', srcCounts(ALL), srcLabel);
+
+      // category multiselect dropdown (empty selection = all), sorted desc by total.
+      F.cat = new Set();
+      buildMulti('#msCategory', 'cat', catCounts(ALL), catLabel);
+
+      $('#fFrom').onchange = () => { F.from = $('#fFrom').value; apply(); };
+      $('#fTo').onchange   = () => { F.to   = $('#fTo').value;   apply(); };
+      $('#today').onclick = () => setRange(TODAY, TODAY);
+      $('#week').onclick  = () => setRange(TODAY, addDays(TODAY, 6));
+      let t; $('#fSearch').oninput = () => { clearTimeout(t); t = setTimeout(()=>{ F.q = $('#fSearch').value.trim().toLowerCase(); apply(); }, 200); };
+      $('#clear').onclick = () => {
+        F.src.clear(); clearMulti('#msSource');
+        F.cat.clear(); clearMulti('#msCategory');
+        F.from=TODAY; F.to=TODAY; $('#fFrom').value=TODAY; $('#fTo').value=TODAY;
+        F.q=''; $('#fSearch').value=''; apply();
+      };
+      $('#refresh').onclick = doRefresh;
+
+      // close any open dropdown when clicking elsewhere
+      document.addEventListener('click', () =>
+        document.querySelectorAll('.ms.open').forEach(o=>o.classList.remove('open')));
+    }
+
+    function setRange(from, to) {
+      F.from=from; F.to=to; $('#fFrom').value=from; $('#fTo').value=to; apply();
+    }
+
+    // Re-pull events for the selected window. Live backend → server re-scrapes;
+    // static (Pages) → just re-fetch the latest hourly snapshot. Either way, reload.
+    async function doRefresh() {
+      const btn = $('#refresh'), label = btn.textContent;
+      btn.classList.add('busy'); btn.textContent = '↻ refreshing…';
+      try {
+        try {
+          const qs = new URLSearchParams({ from: F.from || TODAY, to: F.to || F.from || TODAY });
+          await fetch('/api/refresh?' + qs, { method: 'POST' }); // no-op on static hosts
+        } catch (e) { /* no backend: fall through to snapshot reload */ }
+        ALL = await loadEvents();
+        buildMulti('#msSource', 'src', srcCounts(ALL), srcLabel);
+        buildMulti('#msCategory', 'cat', catCounts(ALL), catLabel);
+        apply();
+        btn.textContent = '↻ updated';
+      } catch (e) {
+        btn.textContent = '↻ failed';
+      } finally {
+        setTimeout(() => { btn.textContent = label; }, 1800);
+        btn.classList.remove('busy');
+      }
+    }
+
+    // Wire the Ticketmaster BYO-key modal (open/save/forget). Called once on init.
+    function wireTm() {
+      const modal = $('#tmModal');
+      const syncBtn = () => $('#tmBtn').classList.toggle('on', TM.on);
+      syncBtn();
+      $('#tmBtn').onclick = e => { e.stopPropagation();
+        $('#tmKey').value = TM.key;
+        $('#tmOn').checked = localStorage.getItem('che_tm_on') === '1';
+        modal.hidden = false; };
+      const close = () => { modal.hidden = true; };
+      $('#tmCancel').onclick = close;
+      modal.onclick = e => { if (e.target === modal) close(); };
+      $('#tmForget').onclick = () => {
+        localStorage.removeItem('che_tm_key'); localStorage.removeItem('che_tm_on');
+        $('#tmKey').value = ''; $('#tmOn').checked = false; syncBtn();
+      };
+      $('#tmSave').onclick = async () => {
+        const k = $('#tmKey').value.trim();
+        if (k) localStorage.setItem('che_tm_key', k); else localStorage.removeItem('che_tm_key');
+        localStorage.setItem('che_tm_on', ($('#tmOn').checked && k) ? '1' : '0');
+        syncBtn(); close();
+        ALL = await loadEvents();
+        buildMulti('#msSource', 'src', srcCounts(ALL), srcLabel);
+        buildMulti('#msCategory', 'cat', catCounts(ALL), catLabel);
+        apply();
+      };
+    }
+
+    function clearMulti(sel) {
+      document.querySelectorAll(`${sel} .ms-opt input`).forEach(b=>b.checked=false);
+      const cap = document.querySelector(`${sel} .ms-cap`); if (cap) cap.textContent='all';
+    }
+
+    // Total events per source over ALL, sorted descending (fixed dropdown order).
+    function srcCounts(arr) {
+      const m = new Map();
+      arr.forEach(e => { const k = e.source_id; m.set(k, (m.get(k)||0)+1); });
+      return [...m.entries()].sort((a,b)=> b[1]-a[1]);
+    }
+
+    // Total events per category over ALL, sorted descending (fixed dropdown order).
+    function catCounts(arr) {
+      const m = new Map();
+      arr.forEach(e => { const k = e.category_group; m.set(k, (m.get(k)||0)+1); });
+      return [...m.entries()].sort((a,b)=> b[1]-a[1]);
+    }
+
+    // Button + checkbox-popover multi-select; mutates F[field] (empty = all).
+    function buildMulti(containerSel, field, counts, labelFn) {
+      const lf = labelFn || (x=>x);
+      const el = $(containerSel), sel = F[field], total = counts.length;
+      el.innerHTML = `<div class="ms">
+        <span class="ms-btn"><span class="ms-cap"></span><span class="chev">&#9654;</span></span>
+        <div class="ms-pop">
+          <div class="ms-tools"><a data-act="all">select all</a><a data-act="none">clear</a></div>
+          ${counts.map(([k,n])=>`<label class="ms-opt"><input type="checkbox" data-v="${esc(k)}"><span>${esc(lf(k))}</span><span class="ms-n">${n}</span></label>`).join('')||'<div style="padding:6px 8px;color:var(--muted)">none</div>'}
+        </div></div>`;
+      const ms = el.querySelector('.ms'), btn = el.querySelector('.ms-btn'),
+            pop = el.querySelector('.ms-pop'), cap = el.querySelector('.ms-cap');
+      const boxes = [...el.querySelectorAll('.ms-opt input')];
+      const reflect = () => boxes.forEach(b => b.checked = sel.has(b.dataset.v));
+      const updCap = () => { cap.textContent = (sel.size===0 || sel.size===total) ? 'all' : (sel.size + ' selected'); };
+      reflect(); updCap();
+      btn.onclick = e => { e.stopPropagation(); const open = ms.classList.contains('open');
+        document.querySelectorAll('.ms.open').forEach(o=>o.classList.remove('open')); if(!open) ms.classList.add('open'); };
+      pop.onclick = e => e.stopPropagation();
+      el.querySelectorAll('.ms-tools a').forEach(a => a.onclick = () => {
+        if (a.dataset.act==='all') counts.forEach(([k])=>sel.add(k)); else sel.clear();
+        reflect(); updCap(); apply();
+      });
+      boxes.forEach(b => b.onchange = () => { if(b.checked) sel.add(b.dataset.v); else sel.delete(b.dataset.v); updCap(); apply(); });
+    }
+
+    // One event vs current filters. `skip` = a facet to ignore (for its own counts).
+    function passes(e, skip) {
+      if (skip!=='src' && F.src.size && !F.src.has(e.source_id)) return false;
+      if (skip!=='cat' && F.cat.size && !F.cat.has(e.category_group)) return false;
+      const d = dayKey(e.begins_on);
+      if (F.from && d < F.from) return false;
+      if (F.to   && d > F.to)   return false;
+      if (F.q && !`${e.title} ${e.locality||''} ${e.category_group||''} ${e.source_id}`.toLowerCase().includes(F.q)) return false;
+      return true;
+    }
+
+    function filtered() { return ALL.filter(e => passes(e, null)); }
+
+    // Facet counts reflect every OTHER active filter (so they shift with dates/search/etc.)
+    function updateDropCounts(sel, field) {
+      const key = field === 'src' ? 'source_id' : 'category_group';
+      const m = new Map();
+      ALL.filter(e => passes(e, field)).forEach(e => { const k = e[key]; m.set(k, (m.get(k)||0)+1); });
+      document.querySelectorAll(`${sel} .ms-opt`).forEach(opt => {
+        const inp = opt.querySelector('input'), n = m.get(inp.dataset.v)||0;
+        opt.querySelector('.ms-n').textContent = n;
+        opt.classList.toggle('ms-zero', n===0);
+      });
+    }
+    function updateCounts() {
+      updateDropCounts('#msSource', 'src');
+      updateDropCounts('#msCategory', 'cat');
+    }
+
+    function apply() {
+      const evs = filtered().sort((a,b)=> a.begins_on < b.begins_on ? -1 : 1);
+      $('#count').textContent = `${evs.length} event${evs.length===1?'':'s'}`;
+      updateCounts();
+      render(evs);
+    }
+
+    function render(events) {
+      markers.forEach(m => m && map.removeLayer(m));
+      markers = []; cards = []; selIdx = -1;
+      map.getContainer().classList.remove('selecting');
+      const list = $('#list');
+      list.innerHTML = '';
+      if (!events.length) {
+        list.innerHTML = '<div class="empty">No events match these filters. Loosen them, or run <code>refresh.py</code> to pull more.</div>';
+        return;
+      }
+      events.forEach((ev, i) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        const link = ev.url ? ` · <a class="detail" href="${esc(ev.url)}" target="_blank" rel="noopener">details ↗</a>` : '';
+        const when = `${fmtDay(ev.begins_on)} · ${fmtTime(ev.begins_on)}`;
+        const meta = `<span class="src">${esc(srcLabel(ev.source_id))}</span> <span class="cat">${esc(catLabel(ev.category_group))}</span>${link}`;
+        card.innerHTML = `<h3>${esc(ev.title)}</h3>
+          <div><span class="when">${when}</span></div>
+          <div class="meta">${meta}</div>`;
+        cards.push(card);
+        let mk = null;
+        if (ev.lat && ev.lng) {
+          mk = L.marker([ev.lat, ev.lng], {icon}).addTo(map);
+          mk.bindPopup(`<b>${esc(ev.title)}</b><br><span style="color:#5a51b0;font-weight:600">${when}</span><br>${meta}`);
+          mk.on('click', () => select(i, false));
+          markers.push(mk);
+        } else {
+          markers.push(null);
+        }
+        card.onclick = () => select(i, true);
+        list.appendChild(card);
+      });
+    }
+
+    // Fast custom scroll within the #list container (native smooth is too slow over long distances).
+    function fastScrollTo(card, block) {
+      const list = $('#list');
+      const target = block === 'center'
+        ? card.offsetTop - (list.clientHeight - card.clientHeight) / 2
+        : (card.offsetTop < list.scrollTop
+            ? card.offsetTop - 8
+            : card.offsetTop + card.clientHeight - list.clientHeight + 8);
+      const from = list.scrollTop, dist = target - from, dur = 200, t0 = performance.now();
+      if (Math.abs(dist) < 2) return;
+      const ease = p => 1 - Math.pow(1 - p, 3);
+      (function step(now) {
+        const p = Math.min(1, (now - t0) / dur);
+        list.scrollTop = from + dist * ease(p);
+        if (p < 1) requestAnimationFrame(step);
+      })(t0);
+    }
+
+    // Highlight event i across sidebar + map. fromCard=true means the click came from the list.
+    function select(i, fromCard) {
+      selecting = true;
+      clearSel();
+      selIdx = i;
+      const card = cards[i], mk = markers[i];
+      card.classList.add('sel');
+      map.getContainer().classList.add('selecting');
+      fastScrollTo(card, fromCard ? 'nearest' : 'center');
+      if (mk) {
+        const el = mk.getElement(); el && el.classList.add('sel');
+        map.setView(mk.getLatLng(), Math.max(map.getZoom(), 16));
+        mk.openPopup();
+      }
+      selecting = false;
+    }
+
+    // Register the tile-caching service worker (relative path → works under a
+    // project-Pages subpath like /cap-hill-explorer/ as well as at root).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    }
+
+    init();
+  </script>
+</body>
+</html>
