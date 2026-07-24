@@ -18,9 +18,12 @@ class TicketmasterAdapter(SourceAdapter):
 
     def __init__(self, source_id: str, url: str = "", scope: str = "local",
                  lat: float = 47.6145, lng: float = -122.3190,
-                 radius_miles: int = 3) -> None:
+                 radius_miles: int | None = None) -> None:
         super().__init__(source_id, url, scope)
-        self.lat, self.lng, self.radius = lat, lng, radius_miles
+        from config import TM_RADIUS_MILES
+        self.lat, self.lng = lat, lng
+        # Default to the box-covering radius so TM tracks config; in_bbox trims.
+        self.radius = radius_miles if radius_miles is not None else TM_RADIUS_MILES
         self.api_key = os.environ.get("TICKETMASTER_API_KEY", "")
 
     def fetch(self, since: datetime, until: datetime) -> list[RawEvent]:

@@ -2,8 +2,8 @@
 
 A complete, from-scratch blueprint for another agent to rebuild this project. It
 is a **personal event "meta-scraper"** for Capitol Hill, Seattle: it pulls
-"what's on tonight" from several public event sources, geo-filters to a Capitol
-Hill bounding box, dedups, categorizes, and renders everything on a modern
+"what's on tonight" from several public event sources, geo-filters to a
+central-Seattle bounding box, dedups, categorizes, and renders everything on a modern
 Leaflet map + searchable sidebar. It ships two ways:
 
 - **Local dev:** a FastAPI app with a live read-only events API + on-demand refresh.
@@ -20,11 +20,11 @@ Live: `https://ahdavies6.github.io/cap-hill-explorer/` (personal GH account `ahd
 
 ```
 cap_hill_explorer/
-├── config.py            # geo bbox, centroid, LOCAL_TZ, SOURCES list, DB path
+├── config.py            # geo center + SEARCH_BBOX, LOCAL_TZ, SOURCES list, DB path
 ├── core/
 │   ├── models.py        # Event + Address dataclasses; stable uid hashing
 │   ├── normalize.py     # RawEvent dict -> Event (tz-aware, UTC-stored)
-│   ├── geo.py           # bbox test + text-hint fallback; drop non-CapHill events
+│   ├── geo.py           # bounding-box test + text-hint fallback; drop out-of-area
 │   ├── dedup.py         # exact-uid + fuzzy (title+time) dedup (rapidfuzz)
 │   ├── categorize.py    # keyword -> coarse taxonomy w/ emoji (for filter chips)
 │   └── store.py         # SQLite + FTS5 store: upsert / query
@@ -55,7 +55,7 @@ cap_hill_explorer/
 ```
 
 **Data flow:** `adapters.*.fetch()` → `RawEvent` dicts → `normalize()` → `Event`
-→ `geo.locate()` (drop if outside bbox) → `dedup()` → `store.upsert()` (SQLite).
+→ `geo.locate()` (drop if outside the box) → `dedup()` → `store.upsert()` (SQLite).
 Reads: `store.query()` → `/api/events` (dev) or baked into `data.json` (prod).
 
 ---
@@ -93,16 +93,19 @@ Two frozen-ish dataclasses, shaped after Mobilizon's event schema:
 tz-aware datetime (assume UTC if naive), converts to UTC, builds an `Address`
 from `lat/lng/location_text`, and returns `None` if there's no start time.
 
-## 5. Geo filter (`core/geo.py`) — the "is it Capitol Hill?" gate
+## 5. Geo filter (`core/geo.py`) — the "is it near Capitol Hill?" gate
 
 `locate(event) -> Event | None`:
-- If the event **has coordinates**: keep iff inside `CAP_HILL_BBOX`, else drop.
+- If the event **has coordinates**: keep iff they fall inside `SEARCH_BBOX`
+  (a central-Seattle lat/lng rectangle, checked by `in_bbox()`), else drop.
 - If **no coords**: fall back to a **regex of text hints** (`capitol hill`,
   `pike/pine`, `broadway`, `neumos`, `barboza`, `cal anderson`, `12th ave`, …);
   on a hit, pin it to `CAP_HILL_CENTER` (Pike/Pine centroid) and keep it.
 - Kept events get tagged `"Capitol Hill"`.
 
-This is the key spatial constraint — everything outside the bbox is discarded.
+This is the key spatial constraint — everything outside the box is discarded.
+The frontend (map + client-side Ticketmaster) applies the **same** `BBOX`
+bounds, so the JS and Python filters agree.
 
 ## 6. Dedup (`core/dedup.py`)
 
@@ -157,7 +160,9 @@ flattening `@graph`).
   **Fragile** — breaks if Meetup changes its Next.js data shape.
 - **ticketmaster.py** (concerts/comedy/sports). Uses the **Discovery API**
   (`app.ticketmaster.com/discovery/v2/events.json`), keyed via
-  `TICKETMASTER_API_KEY` env var, `latlong` + `radius=3mi` around the centroid.
+  `TICKETMASTER_API_KEY` env var, `latlong` + `radius` (defaults to
+  `TM_RADIUS_MILES`, a circle sized to cover the whole box) around the centroid;
+  `in_bbox()` then trims the corners.
   **Self-disables** (returns `[]`) when no key is set — so it's silently off in
   CI. In production the browser fetches TM directly (see frontend BYO-key).
 - **do206.py** (DoStuff platform: concerts/comedy/culture/food). Clean
@@ -212,28 +217,46 @@ Vanilla JS + Leaflet. No framework, no bundler. Key pieces:
   on failure try **`data.enc`** (encrypted static → runs the password gate) then
   fall back to **`data.json`** (plaintext static). Client-side Ticketmaster
   events are merged in if the user enabled a key.
-- **Filters** (state object `F={src:Set,cat:Set,from,to,q}`): source and category
+- **Filters** (state object `F={src:Set,cat:Set,from,to,q}`): a **date range first**
+  (far left) — **Today / 3 days / week** quick-range buttons (`setRange()`) then
+  year-less **date chips** (`.dchip`: a styled label showing e.g. "Fri Jul 24";
+  the real `<input type=date>` is visually hidden and opened via `showPicker()`,
+  so the year is stored but never shown) — then source and category
   **multi-select dropdowns** (`buildMulti()`; empty Set = all, with per-option
-  live counts), a **from/to date range** (Today / This week buttons —
-  `setRange()`), and a **full-text search** box. Controls live on one row that
+  live counts), and a **full-text search** box. Controls live on one row that
   **horizontally scrolls** on narrow windows. A **↻ refresh** button re-pulls
   sources for the selected dates (calls `/api/refresh` in dev; just reloads
   `data.json`/`data.enc` in prod).
+- **Pin-to-top:** every list card and map popup has a **📌 Pin** toggle; pinned
+  events **sort above** everything else (still within the active filters) and
+  render **red** (`iconPinned`, `--hot`) on the map + a red left border in the
+  list. Pin state (event `uid`s) persists in `localStorage['che_pins']` so it
+  survives reopen (like the password). Toggling is **in place**: `togglePin(uid)`
+  updates only the one card + marker (class/label swap, `setIcon`, `setZIndexOffset`,
+  `setPopupContent`) via an `idxByUid` lookup — it does **not** re-sort or re-render,
+  so the current selection and the item's list position are preserved; pinned items
+  only float to the top on the next full `apply()` (filter change / refresh / reload,
+  which keeps a pinned-first sort). All `.pin-btn` clicks (list + popup) route
+  through **one delegated capture-phase** `document` listener, so pinning never
+  selects/deselects the card and works identically from map and list. Pinned markers
+  carry `zIndexOffset: PIN_Z (1000)` so they stack above an overlapping non-pinned one.
 - **Sidebar ↔ map bidirectional highlight:** aligned `cards[]` / `markers[]`
-  arrays (null entries for coord-less events). `select(i)` highlights the chosen
-  card (indigo bg, white text, darker-purple left border via `.card.sel`) and
-  its pin (`.che-pin.sel`), **fades all other pins** (`#map.selecting .che-pin{
+  arrays (null entries for coord-less events). `select(i, fromCard)` highlights the
+  chosen card (indigo bg, white text, darker-purple left border via `.card.sel`)
+  and its pin (`.che-pin.sel`), **fades all other pins** (`#map.selecting .che-pin{
   opacity:.35}`), and auto-scrolls the list to it via a fast custom easing
-  (`fastScrollTo()`). Clicking a pin selects the card and vice versa;
+  (`fastScrollTo()`). Selecting from the **list** zooms/centers the map on the pin;
+  tapping a pin **on the map** keeps the current view (only opens the popup).
   `clearSel()` (on popup close) strips `.sel` from **all** pins (panned-out
   markers can leave stale highlights). A `selecting` guard flag suppresses the
   `popupclose` handler during programmatic popup swaps.
-- **Pinned event count** (`#countbar`) stays visible above the scrolling list.
+- **Event count** (`#countbar`) stays visible above the scrolling list.
 - **Ticketmaster BYO-key:** a **disabled-by-default** button opens a modal to
   paste a personal TM Discovery API key, stored in **localStorage only** (never
   committed / never in the repo). `fetchTicketmaster()` queries TM directly from
   the browser (CORS is open: `access-control-allow-origin: *`), filters to the
-  bbox, maps TM segment → category. Off ⇒ no TM events.
+  box (shared `BBOX` bounds check), maps TM segment → category.
+  Off ⇒ no TM events.
 - **Mobile (`@media max-width:760px`):** search dropdowns become **fixed top
   overlays** with a dim backdrop (instead of hiding in the scroll bar); layout
   stacks to a single column; a floating **📋 List / 🗺️ Map toggle** switches
@@ -343,8 +366,11 @@ Built/pushed under the **personal** account `ahdavies6`, NOT the corporate one.
 
 ## 18. Config knobs (`config.py`)
 
-- `CAP_HILL_BBOX` = lat 47.60–47.64, lng −122.33 to −122.30 (the spatial gate).
-- `CAP_HILL_CENTER` = `(47.6145, −122.3190)` (Pike/Pine centroid; coord fallback).
+- `CAP_HILL_CENTER` = `(47.6145, −122.3190)` (Pike/Pine centroid; map home + TM search center + coord fallback).
+- `SEARCH_BBOX` = central-Seattle lat/lng rectangle (the spatial gate, via `in_bbox()`):
+  `min_lat 47.595` / `max_lat 47.665` / `min_lng −122.385` / `max_lng −122.275`
+  (S = International District, N = lower Ballard/Wallingford/U-District, W = Queen Anne, E = Lake Washington shore).
+- `TM_RADIUS_MILES` = `5` (Ticketmaster's API only does center+radius; over-fetch a circle covering the box, then `in_bbox()` trims).
 - `LOCAL_TZ` = `America/Los_Angeles` (ALL "today/tonight" logic is Seattle-local).
 - `SOURCES` = ordered list of `{id, kind, scope, url}` (order = dedup priority).
 - `DB_PATH` = `events.db`. **No secrets in this file.**

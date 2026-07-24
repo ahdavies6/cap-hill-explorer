@@ -56,13 +56,13 @@ def run(
             ev = normalize(raw, adapter.id)
             if ev is None:
                 continue
-            located = geo.locate(ev)  # None if outside Capitol Hill
+            located = geo.locate(ev)  # None if outside the search box
             if located is None:
                 continue
             collected.append(located)
             kept += 1
         per_source[adapter.id] = kept
-        print(f"[ok]   {adapter.id}: {len(raws)} fetched -> {kept} in Capitol Hill")
+        print(f"[ok]   {adapter.id}: {len(raws)} fetched -> {kept} within box")
 
     deduped = dedup(collected)
     conn = store.connect()

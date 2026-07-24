@@ -1,11 +1,11 @@
-"""Geo filtering: is an event in the Capitol Hill bbox?"""
+"""Geo filtering: is an event inside the central-Seattle search box?"""
 
 from __future__ import annotations
 
 import re
 from typing import Optional
 
-from config import CAP_HILL_BBOX, CAP_HILL_CENTER, NEIGHBORHOOD_LABEL
+from config import CAP_HILL_CENTER, NEIGHBORHOOD_LABEL, SEARCH_BBOX
 from core.models import Event
 
 # Cheap text hints that a location string is in/around Capitol Hill,
@@ -19,7 +19,7 @@ _TEXT_HINTS = re.compile(
 
 
 def in_bbox(lat: float, lng: float) -> bool:
-    b = CAP_HILL_BBOX
+    b = SEARCH_BBOX
     return (
         b["min_lat"] <= lat <= b["max_lat"]
         and b["min_lng"] <= lng <= b["max_lng"]

@@ -3,7 +3,7 @@
 **What's happening tonight in Capitol Hill, Seattle** — a personal event
 meta-scraper on a map. It pulls events from several public sources (Meetup,
 Do206/DoStuff, the CHS Blog calendar, and optionally Ticketmaster),
-geo-filters them to a Capitol Hill bounding box, dedups, auto-categorizes, and
+geo-filters them to a central-Seattle bounding box, dedups, auto-categorizes, and
 drops them on a modern Leaflet map with a searchable sidebar.
 
 **Live:** `https://ahdavies6.github.io/cap-hill-explorer/`

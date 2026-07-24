@@ -67,12 +67,17 @@
     .ms-opt .ms-n{margin-left:auto;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
 
     .daterange{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap}
-    .dlabel{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
     input[type=date],input[type=search],button{background:#fff;color:var(--txt);border:1px solid #d8d4ef;border-radius:8px;padding:7px 10px;font:inherit}
     input[type=date]{font-size:12.5px;font-weight:600;color:var(--accentd);font-variant-numeric:tabular-nums}
     input[type=search]{flex:1;min-width:160px}
     input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(102,126,234,.12)}
     .drsep{color:var(--muted);font-weight:600}
+    /* year-less date chips: styled label that opens the native picker (hidden input) */
+    .dchip{display:inline-flex;align-items:center;gap:6px;cursor:pointer;background:#fff;border:1px solid #d8d4ef;border-radius:8px;padding:7px 11px;font-size:12.5px;font-weight:600;color:var(--accentd);font-variant-numeric:tabular-nums;position:relative}
+    .dchip:hover{border-color:var(--accent)}
+    .dchip-cap{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+    .dchip-native{position:absolute;left:0;bottom:0;width:100%;height:1px;opacity:0;pointer-events:none;border:0;padding:0;margin:0}
+    .rangebtns{display:inline-flex;gap:6px}
     button{cursor:pointer;font-weight:600;color:var(--ink2)}
     button:hover{border-color:var(--accent);color:var(--accentd);background:var(--panel2)}
     .count-pill{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:500;color:var(--accentd);background:var(--panel2);border:1px solid #d8d4ef;border-radius:99px;padding:5px 13px}
@@ -121,6 +126,16 @@
     .card.sel .src{color:#fff;background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.5)}
     .card.sel .cat{color:#fff;background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.5)}
     .card.sel a.detail{color:#fff;text-decoration:underline}
+    /* pin-to-top: red accent in list + map */
+    .whenrow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .pin-btn{font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid #d8d4ef;background:#fff;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0}
+    .pin-btn:hover{border-color:var(--hot);color:var(--hot)}
+    .pin-btn.on{background:var(--hot);border-color:var(--hot);color:#fff}
+    .pin-btn.on:hover{filter:brightness(1.05);color:#fff}
+    .card.pinned{border-left-color:var(--hot)}
+    .card.sel .pin-btn{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.16);color:#fff}
+    .card.sel .pin-btn.on{background:var(--hot);border-color:#fff}
+    .leaflet-popup-content .pin-btn{margin-top:8px}
     /* pin highlight: selected keeps full color, others fade */
     #map.selecting .che-pin{opacity:.35;transition:opacity .15s ease}
     #map.selecting .che-pin.sel{opacity:1}
@@ -179,6 +194,20 @@
 
     <div class="controls">
       <span class="grp">
+        <span class="clabel">when</span>
+        <span class="rangebtns">
+          <button id="today" type="button" title="just today">today</button>
+          <button id="d3" type="button" title="today + next 2 days">3 days</button>
+          <button id="week" type="button" title="today + next 6 days">week</button>
+        </span>
+        <span class="daterange">
+          <span class="dchip" id="chipFrom"><span class="dchip-cap">from</span><span class="dchip-val" id="lblFrom"></span><input type="date" id="fFrom" class="dchip-native" tabindex="-1" aria-hidden="true"></span>
+          <span class="drsep">→</span>
+          <span class="dchip" id="chipTo"><span class="dchip-cap">to</span><span class="dchip-val" id="lblTo"></span><input type="date" id="fTo" class="dchip-native" tabindex="-1" aria-hidden="true"></span>
+        </span>
+      </span>
+      <span class="csep">|</span>
+      <span class="grp">
         <span class="clabel">sources</span>
         <span id="msSource"></span>
       </span>
@@ -188,20 +217,10 @@
         <span id="msCategory"></span>
       </span>
       <span class="csep">|</span>
-      <span class="grp">
-        <span class="daterange">
-          <span class="dlabel">from</span><input type="date" id="fFrom">
-          <span class="drsep">→</span>
-          <span class="dlabel">to</span><input type="date" id="fTo">
-        </span>
-      <button id="today" type="button" title="just today">today</button>
-      <button id="week" type="button" title="today + next 6 days">this week</button>
-      </span>
-      <span class="csep">|</span>
       <input type="search" id="fSearch" placeholder="search title / venue / category…">
       <button id="clear" type="button">clear all</button>
-    <button id="refresh" class="refresh-btn" type="button" title="re-pull sources for the selected dates">↻ refresh</button>
-    <button id="tmBtn" class="tm-btn" type="button" title="add optional Ticketmaster events (bring your own key)">🎟️ Ticketmaster</button>
+      <button id="refresh" class="refresh-btn" type="button" title="re-pull sources for the selected dates">↻ refresh</button>
+      <button id="tmBtn" class="tm-btn" type="button" title="add optional Ticketmaster events (bring your own key)">🎟️ Ticketmaster</button>
     </div>
   </header>
 
@@ -261,20 +280,46 @@
     const fmtDay  = iso => new Date(iso).toLocaleDateString([], {weekday:'short', month:'short', day:'numeric', timeZone:TZ});
     const dayKey  = iso => new Date(iso).toLocaleDateString('en-CA', {timeZone:TZ}); // YYYY-MM-DD in Seattle
     const addDays = (ymd, n) => { const d = new Date(ymd+'T12:00:00'); d.setDate(d.getDate()+n); return d.toLocaleDateString('en-CA'); };
+    const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const WD  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    // Year-less chip label from a YYYY-MM-DD (parsed as local parts → no TZ shift).
+    const fmtChip = ymd => { const [y,m,d] = ymd.split('-').map(Number); return `${WD[new Date(y,m-1,d).getDay()]} ${MON[m-1]} ${d}`; };
 
-    const map = L.map('map').setView([47.6145, -122.3190], 15);
+    // Central-Seattle search box — mirrors config.SEARCH_BBOX. Every pin lives
+    // inside it; the map frames it on load.
+    const BBOX = { minLat: 47.595, maxLat: 47.665, minLng: -122.385, maxLng: -122.275 };
+    const CENTER = [47.6145, -122.3190];  // Pike/Pine; map home + TM search center
+    const HOME_BOUNDS = L.latLngBounds([BBOX.minLat, BBOX.minLng], [BBOX.maxLat, BBOX.maxLng]);
+
+    const map = L.map('map').setView(CENTER, 12);
+    // Frame the whole box once the map has real size. Desktop: visible at load,
+    // so this fires now. Mobile: #map starts display:none (0×0) → skipped here,
+    // done on first map reveal (see wireViewToggle). rAF covers slow layout.
+    let homeFramed = false;
+    function frameHome() {
+      if (!homeFramed && map.getSize().x > 0) {
+        map.fitBounds(HOME_BOUNDS, { padding: [18, 18] });
+        homeFramed = true;
+      }
+    }
+    frameHome();
+    requestAnimationFrame(frameHome);
     // CARTO Voyager: modern, retina/HiDPI raster tiles (Google-Maps-ish), no API key.
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd', maxZoom: 20, detectRetina: true,
     }).addTo(map);
-    const icon = L.divIcon({className:'che-pin',
-      html:'<div style="width:16px;height:16px;border-radius:50% 50% 50% 0;background:#6e65c6;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transform:rotate(-45deg)"></div>',
+    const makeIcon = color => L.divIcon({className:'che-pin',
+      html:`<div style="width:16px;height:16px;border-radius:50% 50% 50% 0;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transform:rotate(-45deg)"></div>`,
       iconSize:[16,16], iconAnchor:[8,8], popupAnchor:[0,-8]});
+    const icon = makeIcon('#6e65c6');
+    const iconPinned = makeIcon('#f43f5e');  // pinned = red (--hot)
 
     let ALL = [];
     let markers = [];
     let cards = [];
+    let RENDERED = [];          // events currently rendered, parallel to cards[]/markers[]
+    let idxByUid = new Map();    // ev.uid -> index in cards[]/markers[]/RENDERED[]
     let selIdx = -1;
     let selecting = false; // true while we programmatically swap popups (ignore that popupclose)
     function clearSel() {
@@ -287,6 +332,52 @@
     }
     // user closing the popup (X / clicking the map) de-highlights everything
     map.on('popupclose', () => { if (!selecting) clearSel(); });
+
+    // Pinned event uids — persisted in localStorage so pins survive reopen (like the pw).
+    const PINS = new Set(JSON.parse(localStorage.getItem('che_pins') || '[]'));
+    const PIN_Z = 1000;  // zIndexOffset lifting a pinned marker above an overlapping non-pinned one
+    const savePins = () => localStorage.setItem('che_pins', JSON.stringify([...PINS]));
+    // Popup HTML for an event — regenerated on pin so the stored popup content
+    // (which Leaflet re-applies on every open) never shows a stale label.
+    function popupHtml(ev) {
+      const pinned = PINS.has(ev.uid), lbl = pinned ? '📌 Pinned' : '📌 Pin';
+      const when = `${fmtDay(ev.begins_on)} · ${fmtTime(ev.begins_on)}`;
+      const link = ev.url ? ` · <a class="detail" href="${esc(ev.url)}" target="_blank" rel="noopener">details ↗</a>` : '';
+      const meta = `<span class="src">${esc(srcLabel(ev.source_id))}</span> <span class="cat">${esc(catLabel(ev.category_group))}</span>${link}`;
+      return `<b>${esc(ev.title)}</b><br><span style="color:#5a51b0;font-weight:600">${when}</span><br>${meta}<br><button class="pin-btn pop-pin${pinned?' on':''}" type="button" data-uid="${esc(ev.uid)}">${lbl}</button>`;
+    }
+    // Pin/unpin IN PLACE: update only this card + marker. No re-sort, no re-render,
+    // so the current selection and the item's list position are preserved. Pinned
+    // items float to the top on the next full apply() (filter change / refresh / reload).
+    function togglePin(uid) {
+      const pinned = !PINS.has(uid);
+      if (pinned) PINS.add(uid); else PINS.delete(uid);
+      savePins();
+      const i = idxByUid.has(uid) ? idxByUid.get(uid) : -1;
+      if (i < 0) return;
+      const card = cards[i], mk = markers[i], lbl = pinned ? '📌 Pinned' : '📌 Pin';
+      if (card) {
+        card.classList.toggle('pinned', pinned);
+        card.querySelectorAll('.pin-btn').forEach(b => { b.classList.toggle('on', pinned); b.textContent = lbl; });
+      }
+      if (mk) {
+        mk.setIcon(pinned ? iconPinned : icon);
+        mk.setZIndexOffset(pinned ? PIN_Z : 0);
+        // setIcon() swaps in a fresh DOM element — restore the selection highlight.
+        if (selIdx === i) { const el = mk.getElement(); el && el.classList.add('sel'); }
+        mk.setPopupContent(popupHtml(RENDERED[i]));  // refresh stored + live popup label
+      }
+    }
+    // One delegated, capture-phase listener handles EVERY .pin-btn (list card + map popup).
+    // Capture fires before the card's own click handler, so pinning never selects/deselects
+    // the card, and it sidesteps Leaflet popup (re)wiring timing entirely.
+    document.addEventListener('click', e => {
+      const b = e.target.closest && e.target.closest('.pin-btn');
+      if (!b) return;
+      e.preventDefault();
+      e.stopPropagation();
+      togglePin(b.dataset.uid);
+    }, true);
     const F = { src:new Set(), cat:new Set(), from:'', to:'', q:'' };
     let DATA_MIN='', DATA_MAX='';
     const TODAY = dayKey(new Date().toISOString());  // Seattle-local YYYY-MM-DD
@@ -297,8 +388,6 @@
 
     // ---- Ticketmaster: bring-your-own-key, off by default. Key lives ONLY in
     // this browser's localStorage — never uploaded, never in the repo/CI. ----
-    const BBOX = {minLat:47.60, maxLat:47.64, minLng:-122.33, maxLng:-122.30};
-    const CENTER = [47.6145, -122.3190];
     const TM = {
       get key(){ return localStorage.getItem('che_tm_key') || ''; },
       get on(){ return localStorage.getItem('che_tm_on') === '1' && !!this.key; },
@@ -309,7 +398,7 @@
       if (!TM.on) return [];
       const start = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
       const end = new Date(addDays(TODAY, 30) + 'T23:59:59Z').toISOString().replace(/\.\d+Z$/, 'Z');
-      const p = new URLSearchParams({ apikey: TM.key, latlong: CENTER.join(','), radius: '3',
+      const p = new URLSearchParams({ apikey: TM.key, latlong: CENTER.join(','), radius: '5',
         unit: 'miles', startDateTime: start, endDateTime: end, size: '100', sort: 'date,asc' });
       let data;
       try {
@@ -412,9 +501,21 @@
         const showMap = b.dataset.v === 'map';
         document.body.classList.toggle('m-map', showMap);
         tg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
-        if (showMap) setTimeout(() => { map.invalidateSize(); if (selIdx >= 0 && markers[selIdx]) map.setView(markers[selIdx].getLatLng()); }, 60);
+        if (showMap) setTimeout(() => {
+          map.invalidateSize();
+          if (!homeFramed) frameHome();
+          if (selIdx >= 0 && markers[selIdx]) map.setView(markers[selIdx].getLatLng());
+        }, 60);
       });
     }
+
+    // Push F.from/F.to into both the hidden native inputs and the year-less chip labels.
+    function syncDateChips() {
+      $('#fFrom').value = F.from; $('#fTo').value = F.to;
+      $('#lblFrom').textContent = fmtChip(F.from);
+      $('#lblTo').textContent = fmtChip(F.to);
+    }
+    function openPicker(sel) { const i = $(sel); try { i.showPicker(); } catch (e) { i.focus(); } }
 
     function buildFilters() {
       const days = ALL.map(e => dayKey(e.begins_on));
@@ -425,7 +526,7 @@
       $('#fFrom').max = $('#fTo').max = addDays(TODAY, 30);
       // Default "when" = today (the day the app is run).
       F.from = TODAY; F.to = TODAY;
-      $('#fFrom').value = F.from; $('#fTo').value = F.to;
+      syncDateChips();
 
       // source chips (all on by default)
       // source multiselect dropdown (empty selection = all), sorted desc by total.
@@ -436,15 +537,18 @@
       F.cat = new Set();
       buildMulti('#msCategory', 'cat', catCounts(ALL), catLabel);
 
-      $('#fFrom').onchange = () => { F.from = $('#fFrom').value; apply(); };
-      $('#fTo').onchange   = () => { F.to   = $('#fTo').value;   apply(); };
+      $('#fFrom').onchange = () => { F.from = $('#fFrom').value; if (F.to < F.from) F.to = F.from; syncDateChips(); apply(); };
+      $('#fTo').onchange   = () => { F.to   = $('#fTo').value;   if (F.to < F.from) F.from = F.to; syncDateChips(); apply(); };
+      $('#chipFrom').onclick = () => openPicker('#fFrom');
+      $('#chipTo').onclick   = () => openPicker('#fTo');
       $('#today').onclick = () => setRange(TODAY, TODAY);
+      $('#d3').onclick    = () => setRange(TODAY, addDays(TODAY, 2));
       $('#week').onclick  = () => setRange(TODAY, addDays(TODAY, 6));
       let t; $('#fSearch').oninput = () => { clearTimeout(t); t = setTimeout(()=>{ F.q = $('#fSearch').value.trim().toLowerCase(); apply(); }, 200); };
       $('#clear').onclick = () => {
         F.src.clear(); clearMulti('#msSource');
         F.cat.clear(); clearMulti('#msCategory');
-        F.from=TODAY; F.to=TODAY; $('#fFrom').value=TODAY; $('#fTo').value=TODAY;
+        F.from=TODAY; F.to=TODAY; syncDateChips();
         F.q=''; $('#fSearch').value=''; apply();
       };
       $('#refresh').onclick = doRefresh;
@@ -455,7 +559,7 @@
     }
 
     function setRange(from, to) {
-      F.from=from; F.to=to; $('#fFrom').value=from; $('#fTo').value=to; apply();
+      F.from=from; F.to=to; syncDateChips(); apply();
     }
 
     // Re-pull events for the selected window. Live backend → server re-scrapes;
@@ -605,7 +709,11 @@
     }
 
     function apply() {
-      const evs = filtered().sort((a,b)=> a.begins_on < b.begins_on ? -1 : 1);
+      const evs = filtered().sort((a,b) => {
+        const pa = PINS.has(a.uid) ? 0 : 1, pb = PINS.has(b.uid) ? 0 : 1;
+        if (pa !== pb) return pa - pb;               // pinned float to the top
+        return a.begins_on < b.begins_on ? -1 : 1;   // then chronological
+      });
       $('#count').textContent = `${evs.length} event${evs.length===1?'':'s'}`;
       updateCounts();
       render(evs);
@@ -613,7 +721,7 @@
 
     function render(events) {
       markers.forEach(m => m && map.removeLayer(m));
-      markers = []; cards = []; selIdx = -1;
+      markers = []; cards = []; selIdx = -1; idxByUid = new Map(); RENDERED = events;
       map.getContainer().classList.remove('selecting');
       const list = $('#list');
       list.innerHTML = '';
@@ -622,19 +730,22 @@
         return;
       }
       events.forEach((ev, i) => {
+        const pinned = PINS.has(ev.uid);
+        const pinLbl = pinned ? '📌 Pinned' : '📌 Pin';
         const card = document.createElement('div');
-        card.className = 'card';
+        card.className = 'card' + (pinned ? ' pinned' : '');
         const link = ev.url ? ` · <a class="detail" href="${esc(ev.url)}" target="_blank" rel="noopener">details ↗</a>` : '';
         const when = `${fmtDay(ev.begins_on)} · ${fmtTime(ev.begins_on)}`;
         const meta = `<span class="src">${esc(srcLabel(ev.source_id))}</span> <span class="cat">${esc(catLabel(ev.category_group))}</span>${link}`;
         card.innerHTML = `<h3>${esc(ev.title)}</h3>
-          <div><span class="when">${when}</span></div>
+          <div class="whenrow"><span class="when">${when}</span><button class="pin-btn${pinned?' on':''}" type="button" data-uid="${esc(ev.uid)}" title="pin to top">${pinLbl}</button></div>
           <div class="meta">${meta}</div>`;
         cards.push(card);
+        idxByUid.set(ev.uid, i);
         let mk = null;
         if (ev.lat && ev.lng) {
-          mk = L.marker([ev.lat, ev.lng], {icon}).addTo(map);
-          mk.bindPopup(`<b>${esc(ev.title)}</b><br><span style="color:#5a51b0;font-weight:600">${when}</span><br>${meta}`);
+          mk = L.marker([ev.lat, ev.lng], {icon: pinned ? iconPinned : icon, zIndexOffset: pinned ? PIN_Z : 0}).addTo(map);
+          mk.bindPopup(popupHtml(ev));
           mk.on('click', () => select(i, false));
           markers.push(mk);
         } else {
@@ -674,7 +785,7 @@
       fastScrollTo(card, fromCard ? 'nearest' : 'center');
       if (mk) {
         const el = mk.getElement(); el && el.classList.add('sel');
-        map.setView(mk.getLatLng(), Math.max(map.getZoom(), 16));
+        if (fromCard) map.setView(mk.getLatLng(), Math.max(map.getZoom(), 16));  // zoom in only when picked from the list; a map tap keeps the current view
         mk.openPopup();
       }
       selecting = false;
